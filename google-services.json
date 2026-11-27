@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "686608178094",
+    "project_id": "gen-lang-client-0047498127",
+    "storage_bucket": "gen-lang-client-0047498127.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:686608178094:android:1da07a9ac21c152bf6863f",
+        "android_client_info": {
+          "package_name": "com.messmanager.pro"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "686608178094-vbidobg57j58gnegv7bihoov6ghkpgpa.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHsJd03wJMBUQiXz1GE8vJZbtQVCklQ_0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "686608178094-vbidobg57j58gnegv7bihoov6ghkpgpa.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

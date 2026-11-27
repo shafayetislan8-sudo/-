@@ -8,10 +8,13 @@ import {
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPhoneNumber,
+  signInWithCredential,
   signInWithPopup,
   updateProfile,
   type ConfirmationResult,
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Eye, EyeOff, Globe, KeyRound, Mail, Moon, Phone, ShieldCheck, Sun, UserPlus } from 'lucide-react';
 import { auth, firebaseConfig, firebaseConfigStatus, isFirebaseInitialized } from '../firebase';
 import { useApp } from '../context/AppContext';
@@ -123,7 +126,15 @@ export function AuthScreen() {
       provider.addScope('email');
       provider.addScope('profile');
       provider.setCustomParameters({ prompt: 'select_account' });
-      const cred = await signInWithPopup(auth, provider);
+      let cred;
+      if (Capacitor.isNativePlatform()) {
+        const nativeResult = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+        const idToken = nativeResult.credential?.idToken;
+        if (!idToken) throw new Error('Google ID token not received');
+        cred = await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
+      } else {
+        cred = await signInWithPopup(auth, provider);
+      }
       if (cred.user) {
         await refreshAuthUser();
         notify(
