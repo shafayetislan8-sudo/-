@@ -1,0 +1,637 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isVerifiedAccount() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.firebase.sign_in_provider == 'phone'
+      );
+    }
+
+    function isOwner(uid) {
+      return isVerifiedAccount() && request.auth.uid == uid;
+    }
+
+    function isBootstrapLocked() {
+      return exists(/databases/$(database)/documents/system/adminBootstrap);
+    }
+
+    // Primary Administrator Email Configuration:
+    // Only this verified Google account can initialize or act as Primary Admin.
+    function primaryAdminEmail() {
+      return 'shafayetislam28122006@gmail.com';
+    }
+
+    function isPrimaryAdminEmail() {
+      return isEmailVerified() &&
+        request.auth.token.firebase.sign_in_provider == 'google.com' &&
+        request.auth.token.email is string &&
+        request.auth.token.email.lower() == primaryAdminEmail().lower();
+    }
+
+    function isAdmin() {
+      return isPrimaryAdminEmail() && (
+        !isBootstrapLocked() ||
+        get(/databases/$(database)/documents/system/adminBootstrap).data.adminUid == request.auth.uid
+      );
+    }
+
+    function isActiveMember(uid) {
+      return isVerifiedAccount() &&
+        exists(/databases/$(database)/documents/users/$(uid)) &&
+        get(/databases/$(database)/documents/users/$(uid)).data.status == 'active';
+    }
+
+    function isMemberMealEntryEnabled() {
+      return !exists(/databases/$(database)/documents/settings/mess) ||
+        get(/databases/$(database)/documents/settings/mess).data.memberMealEntryEnabled == true;
+    }
+
+    function matchesConfiguredMealRate(mealType, unitRate) {
+      return exists(/databases/$(database)/documents/settings/mess) && (
+        (mealType == 'breakfast' && unitRate == get(/databases/$(database)/documents/settings/mess).data.breakfastRate) ||
+        (mealType == 'lunch' && unitRate == get(/databases/$(database)/documents/settings/mess).data.lunchRate) ||
+        (mealType == 'dinner' && unitRate == get(/databases/$(database)/documents/settings/mess).data.dinnerRate)
+      );
+    }
+
+    // --- Entity Validation Blueprints ---
+    function isValidAdminBootstrap(data) {
+      return data.keys().hasAll(['adminUid', 'adminEmail', 'initializedAt']) &&
+        data.keys().hasOnly(['adminUid', 'adminEmail', 'initializedAt']) &&
+        isValidId(data.adminUid) &&
+        data.adminEmail is string && data.adminEmail.size() >= 3 && data.adminEmail.size() <= 200 &&
+        data.initializedAt is timestamp;
+    }
+
+    function isValidMessSettings(data) {
+      return data.keys().hasAll([
+          'messName', 'currency', 'timezone', 'breakfastRate', 'lunchRate', 'dinnerRate',
+          'lowBalanceThreshold', 'criticalBalanceThreshold', 'zeroBalanceNotificationEnabled',
+          'memberMealEntryEnabled', 'automaticMealApproval', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'messName', 'messLogo', 'currency', 'timezone', 'openingDate',
+          'breakfastRate', 'lunchRate', 'dinnerRate',
+          'lowBalanceThreshold', 'criticalBalanceThreshold', 'zeroBalanceNotificationEnabled',
+          'memberMealEntryEnabled', 'automaticMealApproval', 'notificationSettings', 'updatedAt'
+        ]) &&
+        data.messName is string && data.messName.size() >= 2 && data.messName.size() <= 120 &&
+        (!('messLogo' in data) || (data.messLogo is string && data.messLogo.size() <= 500)) &&
+        data.currency == 'BDT' &&
+        data.timezone == 'Asia/Dhaka' &&
+        (!('openingDate' in data) || (data.openingDate is string && data.openingDate.size() <= 32)) &&
+        data.breakfastRate is int && data.breakfastRate >= 0 && data.breakfastRate <= 10000000 &&
+        data.lunchRate is int && data.lunchRate >= 0 && data.lunchRate <= 10000000 &&
+        data.dinnerRate is int && data.dinnerRate >= 0 && data.dinnerRate <= 10000000 &&
+        data.lowBalanceThreshold is int && data.lowBalanceThreshold >= 0 &&
+        data.criticalBalanceThreshold is int && data.criticalBalanceThreshold >= 0 &&
+        data.zeroBalanceNotificationEnabled is bool &&
+        data.memberMealEntryEnabled is bool &&
+        data.automaticMealApproval is bool &&
+        (!('notificationSettings' in data) || data.notificationSettings is map) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminSettings(data) {
+      return data.keys().hasAll(['whatsappEnabled', 'whatsappConsentRequired', 'fcmEnabled', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'whatsappEnabled', 'whatsappPhoneNumberId', 'whatsappBusinessAccountId',
+          'whatsappConsentRequired', 'fcmEnabled', 'updatedAt'
+        ]) &&
+        data.whatsappEnabled is bool &&
+        (!('whatsappPhoneNumberId' in data) || (data.whatsappPhoneNumberId is string && data.whatsappPhoneNumberId.size() <= 128)) &&
+        (!('whatsappBusinessAccountId' in data) || (data.whatsappBusinessAccountId is string && data.whatsappBusinessAccountId.size() <= 128)) &&
+        data.whatsappConsentRequired is bool &&
+        data.fcmEnabled is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'fullName', 'role', 'status', 'joiningDate', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly([
+          'uid', 'fullName', 'email', 'phoneNumber', 'profileImage',
+          'role', 'status', 'joiningDate', 'fcmToken', 'whatsappConsent',
+          'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.uid) &&
+        data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120 &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 200)) &&
+        (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 32)) &&
+        (!('profileImage' in data) || (data.profileImage is string && data.profileImage.size() <= 1000)) &&
+        data.role in ['admin', 'member'] &&
+        data.status in ['pending', 'active', 'suspended', 'removed'] &&
+        data.joiningDate is string && data.joiningDate.size() >= 4 && data.joiningDate.size() <= 32 &&
+        (!('fcmToken' in data) || (data.fcmToken is string && data.fcmToken.size() <= 512)) &&
+        (!('whatsappConsent' in data) || data.whatsappConsent is bool) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidMealRate(data) {
+      return data.keys().hasAll(['mealType', 'amountInPoisha', 'effectiveFrom', 'createdAt', 'createdBy']) &&
+        data.keys().hasOnly(['mealType', 'amountInPoisha', 'effectiveFrom', 'createdAt', 'createdBy']) &&
+        data.mealType in ['breakfast', 'lunch', 'dinner'] &&
+        data.amountInPoisha is int && data.amountInPoisha >= 0 && data.amountInPoisha <= 10000000 &&
+        data.effectiveFrom is string && data.effectiveFrom.size() >= 10 && data.effectiveFrom.size() <= 32 &&
+        data.createdAt is timestamp &&
+        isValidId(data.createdBy);
+    }
+
+    function isValidMealEntry(data) {
+      return data.keys().hasAll([
+          'memberId', 'mealDate', 'mealType', 'quantity', 'unitRateInPoisha',
+          'totalAmountInPoisha', 'status', 'createdBy', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'memberId', 'mealDate', 'mealType', 'quantity', 'unitRateInPoisha',
+          'totalAmountInPoisha', 'status', 'createdBy', 'approvedBy',
+          'createdAt', 'approvedAt', 'updatedAt'
+        ]) &&
+        isValidId(data.memberId) &&
+        data.mealDate is string && data.mealDate.size() == 10 && data.mealDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.mealType in ['breakfast', 'lunch', 'dinner'] &&
+        data.quantity is int && data.quantity >= 1 && data.quantity <= 20 &&
+        data.unitRateInPoisha is int && data.unitRateInPoisha >= 0 && data.unitRateInPoisha <= 10000000 &&
+        data.totalAmountInPoisha is int && data.totalAmountInPoisha == data.quantity * data.unitRateInPoisha &&
+        data.status in ['pending', 'approved', 'rejected', 'cancelled'] &&
+        isValidId(data.createdBy) &&
+        (!('approvedBy' in data) || (data.approvedBy is string && data.approvedBy.size() <= 128)) &&
+        data.createdAt is timestamp &&
+        (!('approvedAt' in data) || data.approvedAt is timestamp) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidWallet(data) {
+      return data.keys().hasAll([
+          'memberId', 'openingBalanceInPoisha', 'currentBalanceInPoisha',
+          'totalDepositsInPoisha', 'totalMealCostsInPoisha', 'totalExpensesInPoisha',
+          'totalRefundsInPoisha', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'memberId', 'openingBalanceInPoisha', 'currentBalanceInPoisha',
+          'totalDepositsInPoisha', 'totalMealCostsInPoisha', 'totalExpensesInPoisha',
+          'totalRefundsInPoisha', 'previousBalanceInPoisha', 'balanceFinishedAt',
+          'lastAlertLevel', 'updatedAt'
+        ]) &&
+        isValidId(data.memberId) &&
+        data.openingBalanceInPoisha is int &&
+        data.currentBalanceInPoisha is int &&
+        data.totalDepositsInPoisha is int && data.totalDepositsInPoisha >= 0 &&
+        data.totalMealCostsInPoisha is int && data.totalMealCostsInPoisha >= 0 &&
+        data.totalExpensesInPoisha is int && data.totalExpensesInPoisha >= 0 &&
+        data.totalRefundsInPoisha is int && data.totalRefundsInPoisha >= 0 &&
+        (!('previousBalanceInPoisha' in data) || data.previousBalanceInPoisha is int) &&
+        (!('balanceFinishedAt' in data) || data.balanceFinishedAt is timestamp) &&
+        (!('lastAlertLevel' in data) || data.lastAlertLevel in ['none', 'low', 'critical', 'zero']) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['memberId', 'type', 'amountInPoisha', 'description', 'createdBy', 'createdAt', 'status']) &&
+        data.keys().hasOnly([
+          'memberId', 'type', 'amountInPoisha', 'description', 'paymentMethod',
+          'referenceId', 'createdBy', 'createdAt', 'status', 'reversalOf'
+        ]) &&
+        isValidId(data.memberId) &&
+        data.type in ['deposit', 'meal_charge', 'expense', 'refund', 'adjustment'] &&
+        data.amountInPoisha is int && data.amountInPoisha != 0 &&
+        data.description is string && data.description.size() >= 1 && data.description.size() <= 300 &&
+        (!('paymentMethod' in data) || (data.paymentMethod is string && data.paymentMethod.size() <= 64)) &&
+        (!('referenceId' in data) || (data.referenceId is string && data.referenceId.size() <= 128)) &&
+        isValidId(data.createdBy) &&
+        data.createdAt is timestamp &&
+        data.status in ['completed', 'reversed'] &&
+        (!('reversalOf' in data) || (data.reversalOf is string && data.reversalOf.size() <= 128));
+    }
+
+    function isValidDepositRequest(data) {
+      return data.keys().hasAll(['memberId', 'amountInPoisha', 'paymentMethod', 'transactionId', 'status', 'createdAt']) &&
+        data.keys().hasOnly([
+          'memberId', 'amountInPoisha', 'paymentMethod', 'transactionId',
+          'receiptImage', 'status', 'createdAt', 'reviewedAt', 'reviewedBy'
+        ]) &&
+        isValidId(data.memberId) &&
+        data.amountInPoisha is int && data.amountInPoisha > 0 && data.amountInPoisha <= 100000000 &&
+        data.paymentMethod is string && data.paymentMethod.size() >= 2 && data.paymentMethod.size() <= 64 &&
+        data.transactionId is string && data.transactionId.size() >= 2 && data.transactionId.size() <= 128 &&
+        (!('receiptImage' in data) || (data.receiptImage is string && data.receiptImage.size() <= 500)) &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.createdAt is timestamp &&
+        (!('reviewedAt' in data) || data.reviewedAt is timestamp) &&
+        (!('reviewedBy' in data) || (data.reviewedBy is string && data.reviewedBy.size() <= 128));
+    }
+
+    function isValidExpense(data) {
+      return data.keys().hasAll([
+          'category', 'amountInPoisha', 'description', 'expenseDate',
+          'allocationType', 'allocatedMemberIds', 'createdBy', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'category', 'amountInPoisha', 'description', 'receiptImage', 'expenseDate',
+          'allocationType', 'allocatedMemberIds', 'createdBy', 'createdAt'
+        ]) &&
+        data.category in ['Grocery', 'Gas', 'Electricity', 'Wi-Fi', 'Water', 'Cleaning', 'Maintenance', 'Other'] &&
+        data.amountInPoisha is int && data.amountInPoisha > 0 && data.amountInPoisha <= 1000000000 &&
+        data.description is string && data.description.size() >= 2 && data.description.size() <= 300 &&
+        (!('receiptImage' in data) || (data.receiptImage is string && data.receiptImage.size() <= 500)) &&
+        data.expenseDate is string && data.expenseDate.size() == 10 && data.expenseDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+        data.allocationType in ['equal', 'selected', 'general'] &&
+        data.allocatedMemberIds is list && data.allocatedMemberIds.size() <= 500 &&
+        (data.allocatedMemberIds.size() == 0 || data.allocatedMemberIds[0] is string) &&
+        isValidId(data.createdBy) &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['recipientUid', 'title', 'message', 'category', 'isRead', 'createdAt']) &&
+        data.keys().hasOnly(['recipientUid', 'title', 'message', 'category', 'isRead', 'createdAt']) &&
+        isValidId(data.recipientUid) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 160 &&
+        data.message is string && data.message.size() >= 1 && data.message.size() <= 500 &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 64 &&
+        data.isRead is bool &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidNotice(data) {
+      return data.keys().hasAll(['title', 'description', 'targetType', 'targetMemberIds', 'published', 'createdAt', 'createdBy']) &&
+        data.keys().hasOnly(['title', 'description', 'targetType', 'targetMemberIds', 'published', 'createdAt', 'createdBy']) &&
+        data.title is string && data.title.size() >= 2 && data.title.size() <= 160 &&
+        data.description is string && data.description.size() >= 2 && data.description.size() <= 2000 &&
+        data.targetType in ['all', 'selected'] &&
+        data.targetMemberIds is list && data.targetMemberIds.size() <= 500 &&
+        (data.targetMemberIds.size() == 0 || data.targetMemberIds[0] is string) &&
+        data.published is bool &&
+        data.createdAt is timestamp &&
+        isValidId(data.createdBy);
+    }
+
+    function isValidMonthlyReport(data) {
+      return data.keys().hasAll([
+          'memberId', 'month', 'year', 'totalBreakfast', 'totalLunch', 'totalDinner',
+          'totalMealCostInPoisha', 'totalDepositsInPoisha', 'totalExpensesInPoisha',
+          'openingBalanceInPoisha', 'closingBalanceInPoisha', 'generatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'memberId', 'month', 'year', 'totalBreakfast', 'totalLunch', 'totalDinner',
+          'totalMealCostInPoisha', 'totalDepositsInPoisha', 'totalExpensesInPoisha',
+          'openingBalanceInPoisha', 'closingBalanceInPoisha', 'generatedAt'
+        ]) &&
+        isValidId(data.memberId) &&
+        data.month is int && data.month >= 1 && data.month <= 12 &&
+        data.year is int && data.year >= 2020 && data.year <= 2100 &&
+        data.totalBreakfast is int && data.totalBreakfast >= 0 &&
+        data.totalLunch is int && data.totalLunch >= 0 &&
+        data.totalDinner is int && data.totalDinner >= 0 &&
+        data.totalMealCostInPoisha is int && data.totalMealCostInPoisha >= 0 &&
+        data.totalDepositsInPoisha is int && data.totalDepositsInPoisha >= 0 &&
+        data.totalExpensesInPoisha is int && data.totalExpensesInPoisha >= 0 &&
+        data.openingBalanceInPoisha is int &&
+        data.closingBalanceInPoisha is int &&
+        data.generatedAt is timestamp;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['actorUid', 'action', 'targetType', 'targetId', 'timestamp']) &&
+        data.keys().hasOnly(['actorUid', 'action', 'targetType', 'targetId', 'timestamp', 'previousValue', 'newValue']) &&
+        isValidId(data.actorUid) &&
+        data.action is string && data.action.size() >= 2 && data.action.size() <= 100 &&
+        data.targetType is string && data.targetType.size() >= 2 && data.targetType.size() <= 64 &&
+        data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128 &&
+        data.timestamp is timestamp &&
+        (!('previousValue' in data) || data.previousValue is map) &&
+        (!('newValue' in data) || data.newValue is map);
+    }
+
+    // --- Collection Rules ---
+
+    match /system/{docId} {
+      allow get: if isValidId(docId) && docId == 'adminBootstrap' && (isAdmin() || isPrimaryAdminEmail());
+      allow list: if false;
+      allow create: if isValidId(docId) && docId == 'adminBootstrap' &&
+        isPrimaryAdminEmail() && !isBootstrapLocked() &&
+        isValidAdminBootstrap(incoming()) &&
+        incoming().adminUid == request.auth.uid &&
+        incoming().adminEmail.lower() == request.auth.token.email.lower() &&
+        incoming().initializedAt == request.time;
+      allow update: if isValidId(docId) && docId == 'adminBootstrap' &&
+        isPrimaryAdminEmail() &&
+        isValidAdminBootstrap(incoming()) &&
+        incoming().adminUid == request.auth.uid &&
+        incoming().adminEmail.lower() == request.auth.token.email.lower() &&
+        incoming().initializedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['adminUid', 'adminEmail', 'initializedAt']);
+      allow delete: if false;
+    }
+
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && isVerifiedAccount();
+      allow list: if false;
+      allow create, update: if isValidId(settingId) && settingId == 'mess' &&
+        isAdmin() && isValidMessSettings(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /adminSettings/{settingId} {
+      allow get: if isValidId(settingId) && isAdmin();
+      allow list: if false;
+      allow create, update: if isValidId(settingId) && settingId == 'integrations' &&
+        isAdmin() && isValidAdminSettings(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /users/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if (isVerifiedAccount() && existing().uid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(uid) && isVerifiedAccount() &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == uid &&
+        (!('email' in incoming()) || (request.auth.token.email is string && incoming().email.lower() == request.auth.token.email.lower())) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          (isOwner(uid) && incoming().role == 'member' && incoming().status == 'pending') ||
+          (isAdmin() && incoming().role == 'admin' && incoming().status == 'active' && uid == request.auth.uid)
+        );
+      allow update: if isValidId(uid) && isVerifiedAccount() &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          (isOwner(uid) &&
+            incoming().role == existing().role &&
+            incoming().status == existing().status &&
+            incoming().joiningDate == existing().joiningDate &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'fullName', 'phoneNumber', 'profileImage', 'fcmToken', 'whatsappConsent', 'updatedAt'
+            ])
+          ) ||
+          (isPrimaryAdminEmail() &&
+            uid == request.auth.uid &&
+            incoming().role == 'admin' &&
+            incoming().status == 'active' &&
+            incoming().joiningDate == existing().joiningDate &&
+            (!('email' in incoming()) || (request.auth.token.email is string && incoming().email.lower() == request.auth.token.email.lower())) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'role', 'status', 'email', 'fullName', 'phoneNumber', 'profileImage', 'whatsappConsent', 'updatedAt'
+            ])
+          ) ||
+          (isAdmin() &&
+            incoming().role == existing().role &&
+            incoming().joiningDate == existing().joiningDate &&
+            !(existing().role == 'admin' && incoming().status != 'active') &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'fullName', 'phoneNumber', 'profileImage', 'whatsappConsent', 'updatedAt'
+            ])
+          )
+        );
+      allow delete: if false;
+    }
+
+    match /mealRates/{rateId} {
+      allow get: if isValidId(rateId) && isVerifiedAccount();
+      allow list: if isVerifiedAccount();
+      allow create: if isValidId(rateId) && isAdmin() &&
+        isValidMealRate(incoming()) &&
+        incoming().createdBy == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /mealEntries/{entryId} {
+      allow get: if isValidId(entryId) && ((isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin());
+      allow list: if (isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin();
+      allow create: if isValidId(entryId) && isVerifiedAccount() &&
+        isValidMealEntry(incoming()) &&
+        incoming().createdBy == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time && (
+          (incoming().memberId == request.auth.uid &&
+            isActiveMember(request.auth.uid) &&
+            isMemberMealEntryEnabled() &&
+            matchesConfiguredMealRate(incoming().mealType, incoming().unitRateInPoisha) &&
+            incoming().status == 'pending' &&
+            !('approvedBy' in incoming()) &&
+            !('approvedAt' in incoming())
+          ) ||
+          (isAdmin() &&
+            exists(/databases/$(database)/documents/users/$(incoming().memberId)) &&
+            incoming().status in ['pending', 'approved']
+          )
+        );
+      allow update: if isValidId(entryId) && isVerifiedAccount() &&
+        isValidMealEntry(incoming()) &&
+        incoming().memberId == existing().memberId &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().mealDate == existing().mealDate &&
+        incoming().mealType == existing().mealType &&
+        incoming().unitRateInPoisha == existing().unitRateInPoisha &&
+        incoming().updatedAt == request.time && (
+          (isActiveMember(request.auth.uid) &&
+            existing().memberId == request.auth.uid &&
+            existing().status == 'pending' &&
+            incoming().status == 'cancelled' &&
+            incoming().quantity == existing().quantity &&
+            incoming().totalAmountInPoisha == existing().totalAmountInPoisha &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          ) ||
+          (isAdmin() && (
+            (existing().status == 'pending' &&
+              incoming().status in ['approved', 'rejected'] &&
+              incoming().approvedBy == request.auth.uid &&
+              incoming().approvedAt == request.time &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'approvedBy', 'approvedAt', 'updatedAt'])
+            ) ||
+            (existing().status == 'pending' &&
+              incoming().status == 'pending' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['quantity', 'totalAmountInPoisha', 'updatedAt'])
+            ) ||
+            (existing().status in ['pending', 'approved'] &&
+              incoming().status == 'cancelled' &&
+              incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+            )
+          ))
+        );
+      allow delete: if false;
+    }
+
+    match /wallets/{uid} {
+      allow get: if isValidId(uid) && (isOwner(uid) || isAdmin());
+      allow list: if (isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin();
+      allow create: if isValidId(uid) && isAdmin() &&
+        isValidWallet(incoming()) &&
+        incoming().memberId == uid &&
+        incoming().updatedAt == request.time;
+      allow update: if isValidId(uid) && isAdmin() &&
+        isValidWallet(incoming()) &&
+        incoming().memberId == uid &&
+        incoming().memberId == existing().memberId &&
+        incoming().openingBalanceInPoisha == existing().openingBalanceInPoisha &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if isValidId(transactionId) && ((isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin());
+      allow list: if (isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin();
+      allow create: if isValidId(transactionId) && isAdmin() &&
+        isValidTransaction(incoming()) &&
+        incoming().status == 'completed' &&
+        incoming().createdBy == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(transactionId) && isAdmin() &&
+        isValidTransaction(incoming()) &&
+        existing().status == 'completed' &&
+        incoming().status == 'reversed' &&
+        incoming().memberId == existing().memberId &&
+        incoming().type == existing().type &&
+        incoming().amountInPoisha == existing().amountInPoisha &&
+        incoming().description == existing().description &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if false;
+    }
+
+    match /depositRequests/{requestId} {
+      allow get: if isValidId(requestId) && ((isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin());
+      allow list: if (isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin();
+      allow create: if isValidId(requestId) && isVerifiedAccount() &&
+        isActiveMember(request.auth.uid) &&
+        isValidDepositRequest(incoming()) &&
+        incoming().memberId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        !('reviewedAt' in incoming()) &&
+        !('reviewedBy' in incoming()) &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(requestId) && isAdmin() &&
+        isValidDepositRequest(incoming()) &&
+        existing().status == 'pending' &&
+        incoming().status in ['approved', 'rejected'] &&
+        incoming().memberId == existing().memberId &&
+        incoming().amountInPoisha == existing().amountInPoisha &&
+        incoming().paymentMethod == existing().paymentMethod &&
+        incoming().transactionId == existing().transactionId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().reviewedBy == request.auth.uid &&
+        incoming().reviewedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy']);
+      allow delete: if false;
+    }
+
+    match /expenses/{expenseId} {
+      allow get: if isValidId(expenseId) && (
+        isAdmin() ||
+        (isActiveMember(request.auth.uid) && (
+          existing().allocationType == 'general' ||
+          existing().allocationType == 'equal' ||
+          request.auth.uid in existing().allocatedMemberIds
+        ))
+      );
+      allow list: if isAdmin() || (
+        isActiveMember(request.auth.uid) && (
+          existing().allocationType == 'general' ||
+          existing().allocationType == 'equal' ||
+          request.auth.uid in existing().allocatedMemberIds
+        )
+      );
+      allow create: if isValidId(expenseId) && isAdmin() &&
+        isValidExpense(incoming()) &&
+        incoming().createdBy == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update, delete: if false;
+    }
+
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && ((isVerifiedAccount() && existing().recipientUid == request.auth.uid) || isAdmin());
+      allow list: if (isVerifiedAccount() && existing().recipientUid == request.auth.uid) || isAdmin();
+      allow create: if isValidId(notificationId) && isAdmin() &&
+        isValidNotification(incoming()) &&
+        incoming().isRead == false &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(notificationId) && isVerifiedAccount() &&
+        isValidNotification(incoming()) &&
+        existing().recipientUid == request.auth.uid &&
+        incoming().isRead == true &&
+        incoming().recipientUid == existing().recipientUid &&
+        incoming().title == existing().title &&
+        incoming().message == existing().message &&
+        incoming().category == existing().category &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if false;
+    }
+
+    match /notices/{noticeId} {
+      allow get: if isValidId(noticeId) && (
+        isAdmin() ||
+        (isActiveMember(request.auth.uid) && existing().published == true && (
+          existing().targetType == 'all' ||
+          request.auth.uid in existing().targetMemberIds
+        ))
+      );
+      allow list: if isAdmin() || (
+        isActiveMember(request.auth.uid) && existing().published == true && (
+          existing().targetType == 'all' ||
+          request.auth.uid in existing().targetMemberIds
+        )
+      );
+      allow create: if isValidId(noticeId) && isAdmin() &&
+        isValidNotice(incoming()) &&
+        incoming().createdBy == request.auth.uid &&
+        incoming().createdAt == request.time;
+      allow update: if isValidId(noticeId) && isAdmin() &&
+        isValidNotice(incoming()) &&
+        incoming().createdBy == existing().createdBy &&
+        incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(noticeId) && isAdmin();
+    }
+
+    match /monthlyReports/{reportId} {
+      allow get: if isValidId(reportId) && ((isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin());
+      allow list: if (isVerifiedAccount() && existing().memberId == request.auth.uid) || isAdmin();
+      allow create, update: if isValidId(reportId) && isAdmin() &&
+        isValidMonthlyReport(incoming()) &&
+        incoming().generatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isValidId(logId) && isAdmin() &&
+        isValidAuditLog(incoming()) &&
+        incoming().actorUid == request.auth.uid &&
+        incoming().timestamp == request.time;
+      allow update, delete: if false;
+    }
+  }
+}

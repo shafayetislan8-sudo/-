@@ -1,0 +1,6 @@
+{
+  "name": "Mess Manager Pro",
+  "description": "Single-mess meal tracking, wallet ledger, expense allocation, and reporting application for one primary administrator and unlimited mess members.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

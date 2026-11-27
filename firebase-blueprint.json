@@ -1,0 +1,298 @@
+{
+  "entities": {
+    "AdminBootstrap": {
+      "title": "AdminBootstrap",
+      "description": "One-time immutable lock recording the single primary administrator UID and email.",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "adminEmail": { "type": "string", "minLength": 3, "maxLength": 200 },
+        "initializedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUid", "adminEmail", "initializedAt"]
+    },
+    "MessSettings": {
+      "title": "MessSettings",
+      "description": "Publicly readable mess operational configuration and active meal rates in poisha.",
+      "type": "object",
+      "properties": {
+        "messName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "messLogo": { "type": "string", "maxLength": 500 },
+        "currency": { "type": "string", "enum": ["BDT"] },
+        "timezone": { "type": "string", "enum": ["Asia/Dhaka"] },
+        "openingDate": { "type": "string", "maxLength": 32 },
+        "breakfastRate": { "type": "integer" },
+        "lunchRate": { "type": "integer" },
+        "dinnerRate": { "type": "integer" },
+        "lowBalanceThreshold": { "type": "integer" },
+        "criticalBalanceThreshold": { "type": "integer" },
+        "zeroBalanceNotificationEnabled": { "type": "boolean" },
+        "memberMealEntryEnabled": { "type": "boolean" },
+        "automaticMealApproval": { "type": "boolean" },
+        "notificationSettings": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["messName", "currency", "timezone", "breakfastRate", "lunchRate", "dinnerRate", "lowBalanceThreshold", "criticalBalanceThreshold", "zeroBalanceNotificationEnabled", "memberMealEntryEnabled", "automaticMealApproval", "updatedAt"]
+    },
+    "AdminSettings": {
+      "title": "AdminSettings",
+      "description": "Private admin-only integration configuration (WhatsApp Cloud API, FCM settings).",
+      "type": "object",
+      "properties": {
+        "whatsappEnabled": { "type": "boolean" },
+        "whatsappPhoneNumberId": { "type": "string", "maxLength": 128 },
+        "whatsappBusinessAccountId": { "type": "string", "maxLength": 128 },
+        "whatsappConsentRequired": { "type": "boolean" },
+        "fcmEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["whatsappEnabled", "whatsappConsentRequired", "fcmEnabled", "updatedAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Individual member or single admin account profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fullName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 200 },
+        "phoneNumber": { "type": "string", "maxLength": 32 },
+        "profileImage": { "type": "string", "maxLength": 1000 },
+        "role": { "type": "string", "enum": ["admin", "member"] },
+        "status": { "type": "string", "enum": ["pending", "active", "suspended", "removed"] },
+        "joiningDate": { "type": "string", "maxLength": 32 },
+        "fcmToken": { "type": "string", "maxLength": 512 },
+        "whatsappConsent": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "fullName", "role", "status", "joiningDate", "createdAt", "updatedAt"]
+    },
+    "MealRate": {
+      "title": "MealRate",
+      "description": "Immutable historical meal rate version in integer poisha.",
+      "type": "object",
+      "properties": {
+        "mealType": { "type": "string", "enum": ["breakfast", "lunch", "dinner"] },
+        "amountInPoisha": { "type": "integer" },
+        "effectiveFrom": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" }
+      },
+      "required": ["mealType", "amountInPoisha", "effectiveFrom", "createdAt", "createdBy"]
+    },
+    "MealEntry": {
+      "title": "MealEntry",
+      "description": "Member or admin submitted meal entry with frozen historical rate upon approval.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "mealDate": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "mealType": { "type": "string", "enum": ["breakfast", "lunch", "dinner"] },
+        "quantity": { "type": "integer" },
+        "unitRateInPoisha": { "type": "integer" },
+        "totalAmountInPoisha": { "type": "integer" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "cancelled"] },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "approvedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "mealDate", "mealType", "quantity", "unitRateInPoisha", "totalAmountInPoisha", "status", "createdBy", "createdAt", "updatedAt"]
+    },
+    "Wallet": {
+      "title": "Wallet",
+      "description": "Member wallet storing integer poisha balances.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "openingBalanceInPoisha": { "type": "integer" },
+        "currentBalanceInPoisha": { "type": "integer" },
+        "totalDepositsInPoisha": { "type": "integer" },
+        "totalMealCostsInPoisha": { "type": "integer" },
+        "totalExpensesInPoisha": { "type": "integer" },
+        "totalRefundsInPoisha": { "type": "integer" },
+        "previousBalanceInPoisha": { "type": "integer" },
+        "balanceFinishedAt": { "type": "string", "format": "date-time" },
+        "lastAlertLevel": { "type": "string", "enum": ["none", "low", "critical", "zero"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "openingBalanceInPoisha", "currentBalanceInPoisha", "totalDepositsInPoisha", "totalMealCostsInPoisha", "totalExpensesInPoisha", "totalRefundsInPoisha", "updatedAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Immutable financial ledger record in integer poisha.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "type": { "type": "string", "enum": ["deposit", "meal_charge", "expense", "refund", "adjustment"] },
+        "amountInPoisha": { "type": "integer" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "paymentMethod": { "type": "string", "maxLength": 64 },
+        "referenceId": { "type": "string", "maxLength": 128 },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["completed", "reversed"] },
+        "reversalOf": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["memberId", "type", "amountInPoisha", "description", "createdBy", "createdAt", "status"]
+    },
+    "DepositRequest": {
+      "title": "DepositRequest",
+      "description": "Member deposit submission awaiting admin verification.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "amountInPoisha": { "type": "integer" },
+        "paymentMethod": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "transactionId": { "type": "string", "minLength": 2, "maxLength": 128 },
+        "receiptImage": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "reviewedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["memberId", "amountInPoisha", "paymentMethod", "transactionId", "status", "createdAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Mess expense record with equal, selected, or general allocation.",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string", "enum": ["Grocery", "Gas", "Electricity", "Wi-Fi", "Water", "Cleaning", "Maintenance", "Other"] },
+        "amountInPoisha": { "type": "integer" },
+        "description": { "type": "string", "minLength": 2, "maxLength": 300 },
+        "receiptImage": { "type": "string", "maxLength": 500 },
+        "expenseDate": { "type": "string", "minLength": 10, "maxLength": 10, "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "allocationType": { "type": "string", "enum": ["equal", "selected", "general"] },
+        "allocatedMemberIds": { "type": "array" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["category", "amountInPoisha", "description", "expenseDate", "allocationType", "allocatedMemberIds", "createdBy", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification record for balance alerts, approvals, and announcements.",
+      "type": "object",
+      "properties": {
+        "recipientUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "category": { "type": "string", "maxLength": 64 },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["recipientUid", "title", "message", "category", "isRead", "createdAt"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Mess-wide or targeted announcement published by the single administrator.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "description": { "type": "string", "minLength": 2, "maxLength": 2000 },
+        "targetType": { "type": "string", "enum": ["all", "selected"] },
+        "targetMemberIds": { "type": "array" },
+        "published": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" }
+      },
+      "required": ["title", "description", "targetType", "targetMemberIds", "published", "createdAt", "createdBy"]
+    },
+    "MonthlyReport": {
+      "title": "MonthlyReport",
+      "description": "Archived monthly financial and meal summary per member.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "month": { "type": "integer" },
+        "year": { "type": "integer" },
+        "totalBreakfast": { "type": "integer" },
+        "totalLunch": { "type": "integer" },
+        "totalDinner": { "type": "integer" },
+        "totalMealCostInPoisha": { "type": "integer" },
+        "totalDepositsInPoisha": { "type": "integer" },
+        "totalExpensesInPoisha": { "type": "integer" },
+        "openingBalanceInPoisha": { "type": "integer" },
+        "closingBalanceInPoisha": { "type": "integer" },
+        "generatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "month", "year", "totalBreakfast", "totalLunch", "totalDinner", "totalMealCostInPoisha", "totalDepositsInPoisha", "totalExpensesInPoisha", "openingBalanceInPoisha", "closingBalanceInPoisha", "generatedAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Admin-only immutable audit log of administrative and financial actions.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "action": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "targetType": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "previousValue": { "type": "object" },
+        "newValue": { "type": "object" }
+      },
+      "required": ["actorUid", "action", "targetType", "targetId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/system/{docId}": {
+      "schema": { "$ref": "#/entities/AdminBootstrap" },
+      "description": "Single-admin bootstrap lock document (system/adminBootstrap)."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/MessSettings" },
+      "description": "Publicly readable mess operational configuration (settings/mess)."
+    },
+    "/adminSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/AdminSettings" },
+      "description": "Admin-only private integration configuration."
+    },
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles containing PII; strictly readable only by owner or single admin."
+    },
+    "/mealRates/{rateId}": {
+      "schema": { "$ref": "#/entities/MealRate" },
+      "description": "Append-only historical meal rate versions."
+    },
+    "/mealEntries/{entryId}": {
+      "schema": { "$ref": "#/entities/MealEntry" },
+      "description": "Member and admin meal entries."
+    },
+    "/wallets/{uid}": {
+      "schema": { "$ref": "#/entities/Wallet" },
+      "description": "Member financial wallets in integer poisha."
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "Immutable financial transaction ledger."
+    },
+    "/depositRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/DepositRequest" },
+      "description": "Member deposit verification requests."
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Mess expenses with member allocation."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Per-user notifications."
+    },
+    "/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/Notice" },
+      "description": "Published mess announcements."
+    },
+    "/monthlyReports/{reportId}": {
+      "schema": { "$ref": "#/entities/MonthlyReport" },
+      "description": "Archived monthly reports per member."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Admin-only audit trail."
+    }
+  }
+}
