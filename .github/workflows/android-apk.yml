@@ -53,13 +53,35 @@ jobs:
             echo "No google-services.json found"
           fi
 
-      - name: Use fixed debug keystore (keeps SHA-1 same every build)
+      - name: Force fixed debug keystore in Gradle
         run: |
-          if [ -f android-debug/debug.keystore ]; then
-            mkdir -p ~/.android
-            cp android-debug/debug.keystore ~/.android/debug.keystore
-            echo "Fixed debug keystore installed"
-          fi
+          ls -la android-debug/
+          mkdir -p ~/.android
+          cp android-debug/debug.keystore ~/.android/debug.keystore
+          python3 - <<'PY'
+          import os, re
+          p = 'android/app/build.gradle'
+          s = open(p).read()
+          ks = os.path.join(os.environ['GITHUB_WORKSPACE'], 'android-debug', 'debug.keystore')
+          if not os.path.exists(ks):
+              raise SystemExit('debug.keystore not found: ' + ks)
+          block = (
+              "\n    signingConfigs {\n"
+              "        debug {\n"
+              "            storeFile file('" + ks + "')\n"
+              "            storePassword 'android'\n"
+              "            keyAlias 'androiddebugkey'\n"
+              "            keyPassword 'android'\n"
+              "        }\n"
+              "    }\n"
+          )
+          if 'android-debug/debug.keystore' not in s:
+              s, n = re.subn(r'^android\s*\{', lambda m: m.group(0) + block, s, count=1, flags=re.M)
+              if n == 0:
+                  raise SystemExit('android block not found in build.gradle')
+              open(p, 'w').write(s)
+          print('Patched build.gradle with fixed debug keystore')
+          PY
 
       - name: Build Debug APK
         run: |
