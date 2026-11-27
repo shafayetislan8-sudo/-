@@ -67,6 +67,13 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Show APK signing SHA-1 (check)
+        run: |
+          echo "=== APK SIGNING CERT ==="
+          keytool -printcert -jarfile android/app/build/outputs/apk/debug/app-debug.apk | grep -E "SHA1|Owner"
+          echo "=== google-services package/hash ==="
+          grep -E "package_name|certificate_hash" android/app/google-services.json || true
+
       - name: Build Release APK
         continue-on-error: true
         run: |
