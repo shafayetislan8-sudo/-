@@ -68,10 +68,12 @@ jobs:
           ./gradlew assembleDebug
 
       - name: Show APK signing SHA-1 (check)
+        continue-on-error: true
         run: |
+          APKSIGNER=$(ls $ANDROID_HOME/build-tools/*/apksigner | sort -V | tail -1)
           echo "=== APK SIGNING CERT ==="
-          keytool -printcert -jarfile android/app/build/outputs/apk/debug/app-debug.apk | grep -E "SHA1|Owner"
-          echo "=== google-services package/hash ==="
+          $APKSIGNER verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk | grep -i "SHA-1" || true
+          echo "=== google-services.json ==="
           grep -E "package_name|certificate_hash" android/app/google-services.json || true
 
       - name: Build Release APK
